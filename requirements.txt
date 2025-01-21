@@ -1,0 +1,6 @@
+fastapi==0.109.1
+pinecone-client==3.0.0
+pydantic==2.5.2
+uvicorn==0.24.0
+pinecone
+python-dotenv
