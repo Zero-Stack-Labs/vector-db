@@ -83,7 +83,7 @@ class PineconeDBProvider(VectorDBProvider):
                 results_to_return.append({
                     'id': match['id'],
                     'score': match['score'],
-                    'metadata': match['metadata'],
+                    'metadata': match.get('metadata', {}),
                     'vector': match['values']
                 })
 
