@@ -3,7 +3,7 @@ from app.models import IndexConfig, UpsertRequest, QueryRequest
 from app.services.vector_db_service_interface import VectorDBServiceInterface
 
 router = APIRouter(
-    prefix="/vector-db",
+    prefix="/api/ms/vector-db",
     tags=["vector-db"]
 )
 
