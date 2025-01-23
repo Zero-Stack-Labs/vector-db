@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from app.models import IndexConfig, UpsertRequest, QueryRequest
+from app.models.models import IndexConfig, UpsertRequest, QueryRequest
 from app.services.vector_db_service_interface import VectorDBServiceInterface
 
 router = APIRouter(

@@ -1,5 +1,5 @@
 from app.factories.vector_db_provider_factory import VectorDBProviderFactory
-from app.models import IndexConfig, UpsertRequest, QueryRequest
+from app.models.models import IndexConfig, UpsertRequest, QueryRequest
 from app.services.vector_db_service_interface import VectorDBServiceInterface
 
 

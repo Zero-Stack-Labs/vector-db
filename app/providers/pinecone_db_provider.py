@@ -1,8 +1,8 @@
 import time
 
 from pinecone import Pinecone, ServerlessSpec
-from app.config import PINECONE_API_KEY, MODEL_NAME
-from app.models import IndexConfig, DataItem, QueryRequest, UpsertRequest
+from app.configurations.config import PINECONE_API_KEY, MODEL_NAME
+from app.models.models import IndexConfig, QueryRequest, UpsertRequest
 from app.providers.vector_db_provider import VectorDBProvider
 
 

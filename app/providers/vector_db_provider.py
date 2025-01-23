@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from app.models import QueryRequest, UpsertRequest
+from app.models.models import QueryRequest, UpsertRequest
 
 
 class VectorDBProvider(ABC):

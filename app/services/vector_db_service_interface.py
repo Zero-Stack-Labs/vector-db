@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from app.models import IndexConfig, UpsertRequest, QueryRequest
+from app.models.models import IndexConfig, UpsertRequest, QueryRequest
 
 
 class VectorDBServiceInterface(ABC):
