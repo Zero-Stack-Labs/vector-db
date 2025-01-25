@@ -36,3 +36,8 @@ async def search(provider_name: str, index_name: str, query_request: QueryReques
         return results
     except Exception as e:
         raise HTTPException(status_code=400, detail="Error en la búsqueda: " + str(e))
+
+
+@router.get("/health")
+async def health_check():
+    return {"status": "healthy"}
