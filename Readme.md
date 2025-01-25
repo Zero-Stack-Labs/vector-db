@@ -76,7 +76,7 @@ uvicorn main:app --reload
 
 #### Postman Collection
 Para probar los endpoints más fácilmente, puedes usar nuestra colección de Postman:
-[Vector DB API Collection](https://sumer-07062021.postman.co/workspace/SUMER~148b538f-9145-4526-8806-bb1cc611d3bd/collection/16642082-d356100e-f0fc-461e-b19f-65935b064b38?action=share&creator=16642082&active-environment=16640760-5fde9fd8-7328-4098-8d82-c9d5fa254624)
+[Vector DB API Collection](https://sumer-07062021.postman.co/workspace/SUMER~148b538f-9145-4526-8806-bb1cc611d3bd/collection/16642082-01b51a02-01f6-4a39-959e-d1f4675e4bd2?action=share&creator=16642082&active-environment=16640760-5fde9fd8-7328-4098-8d82-c9d5fa254624)
 
 #### Create Index
 
