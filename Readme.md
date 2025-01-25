@@ -1,4 +1,3 @@
-
 # Vector Database API with FastAPI
 
 This project provides a FastAPI-based API to manage vector database operations, including creating indexes, inserting (upserting) data, and performing similarity or ID-based searches. Currently, it supports **Pinecone** as the vector database provider.
@@ -17,6 +16,38 @@ This project provides a FastAPI-based API to manage vector database operations, 
 - Pydantic == 2.5.2
 - Uvicorn == 0.24.0
 - python-dotenv
+- Docker (opcional)
+
+## Instalación y Ejecución
+
+### Usando Docker
+
+1. Construir la imagen:
+```bash
+docker build -t vector-db-api .
+```
+
+2. Ejecutar el contenedor:
+```bash
+docker run -d -p 9000:9000 --name vector-db-container vector-db-api
+```
+
+3. Verificar que está funcionando:
+- La API estará disponible en: http://localhost:9000/docs
+
+4. Comandos útiles de Docker:
+```bash
+# Ver logs del contenedor
+docker logs vector-db-container
+
+# Detener el contenedor
+docker stop vector-db-container
+
+# Eliminar el contenedor
+docker rm vector-db-container
+```
+
+### Instalación Local
 
 Install the dependencies using:
 
@@ -42,6 +73,10 @@ uvicorn main:app --reload
 ```
 
 ### 2. API Endpoints
+
+#### Postman Collection
+Para probar los endpoints más fácilmente, puedes usar nuestra colección de Postman:
+[Vector DB API Collection](https://sumer-07062021.postman.co/workspace/SUMER~148b538f-9145-4526-8806-bb1cc611d3bd/collection/16642082-d356100e-f0fc-461e-b19f-65935b064b38?action=share&creator=16642082&active-environment=16640760-5fde9fd8-7328-4098-8d82-c9d5fa254624)
 
 #### Create Index
 
