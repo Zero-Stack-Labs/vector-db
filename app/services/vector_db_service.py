@@ -15,3 +15,6 @@ class VectorDBService(VectorDBServiceInterface):
 
     def search(self, provider_name: str, index_name: str, query_request: QueryRequest):
         return self.provider.search(index_name, query_request)
+    
+    def ensure_namespace_exists(self, provider_name: str, index_name: str, namespace: str):
+        return self.provider.ensure_namespace_exists(index_name, namespace)

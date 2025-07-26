@@ -14,3 +14,7 @@ class VectorDBServiceInterface(ABC):
     @abstractmethod
     def search(self, provider_name: str, index_name: str, query_request: QueryRequest):
         pass
+    
+    @abstractmethod
+    def ensure_namespace_exists(self, provider_name: str, index_name: str, namespace: str):
+        pass

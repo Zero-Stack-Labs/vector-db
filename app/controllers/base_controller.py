@@ -38,6 +38,16 @@ async def search(provider_name: str, index_name: str, query_request: QueryReques
         raise HTTPException(status_code=400, detail="Error en la búsqueda: " + str(e))
 
 
+@router.post("/ensure_namespace/{provider_name}/{index_name}/{namespace}")
+async def ensure_namespace(provider_name: str, index_name: str, namespace: str,
+                          vector_db_service: VectorDBServiceInterface = Depends()):
+    try:
+        result = vector_db_service.ensure_namespace_exists(provider_name, index_name, namespace)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/health")
 async def health_check():
     return {"status": "healthy"}

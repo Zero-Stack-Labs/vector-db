@@ -14,3 +14,7 @@ class VectorDBProvider(ABC):
     @abstractmethod
     def search(self, index_name: str, query_request: QueryRequest):
         pass
+    
+    @abstractmethod
+    def ensure_namespace_exists(self, index_name: str, namespace: str):
+        pass
