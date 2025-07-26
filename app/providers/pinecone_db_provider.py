@@ -1,4 +1,6 @@
 import time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pinecone import Pinecone, ServerlessSpec
 from app.configurations.config import PINECONE_API_KEY, CHUNK_THRESHOLD
@@ -31,13 +33,40 @@ class PineconeDBProvider(VectorDBProvider):
     def upsert_data(self, index_name: str, upsert_request: UpsertRequest):
         index = self.pc.Index(index_name)
         
+        if len(upsert_request.records) > 100:
+            return self._upsert_data_batched(index, upsert_request)
+        
+        return self._upsert_data_optimized(index, upsert_request)
+    
+    def _upsert_data_optimized(self, index, upsert_request: UpsertRequest):
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            delete_future = executor.submit(
+                self._delete_existing_document_chunks, index, upsert_request
+            )
+            
+            chunks = self._process_records_to_chunks(upsert_request.records)
+            embeddings = self._create_embeddings_for_chunks(chunks)
+            
+            delete_future.result()
+            
+            vectors = self._build_vectors_from_chunks_and_embeddings(chunks, embeddings)
+            index.upsert(vectors=vectors, namespace=upsert_request.namespace)
+    
+    def _upsert_data_batched(self, index, upsert_request: UpsertRequest):
+        batch_size = 50
+        records = upsert_request.records
+        total_records = len(records)
+        
         self._delete_existing_document_chunks(index, upsert_request)
         
-        chunks = self._process_records_to_chunks(upsert_request.records)
-        embeddings = self._create_embeddings_for_chunks(chunks)
-        vectors = self._build_vectors_from_chunks_and_embeddings(chunks, embeddings)
-        
-        index.upsert(vectors=vectors, namespace=upsert_request.namespace)
+        for i in range(0, total_records, batch_size):
+            batch_records = records[i:i + batch_size]
+            
+            chunks = self._process_records_to_chunks(batch_records)
+            embeddings = self._create_embeddings_for_chunks(chunks)
+            vectors = self._build_vectors_from_chunks_and_embeddings(chunks, embeddings)
+            
+            index.upsert(vectors=vectors, namespace=upsert_request.namespace)
     
     def _process_records_to_chunks(self, records):
         all_chunks = []
