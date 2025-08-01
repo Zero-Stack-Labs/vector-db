@@ -4,10 +4,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pinecone import Pinecone, ServerlessSpec
 from app.configurations.config import PINECONE_API_KEY, CHUNK_THRESHOLD
-from app.models.models import IndexConfig, QueryRequest, UpsertRequest
+from app.models.models import IndexConfig, QueryRequest, UpsertRequest, DataItem
 from app.providers.vector_db_provider import VectorDBProvider
 from app.services.text_splitter_service import TextSplitterService
 from app.services.embedding_service import EmbeddingService
+from app.services.file_processor_service import FileProcessorService
 
 
 class PineconeDBProvider(VectorDBProvider):
@@ -15,6 +16,7 @@ class PineconeDBProvider(VectorDBProvider):
         self.pc = Pinecone(api_key=PINECONE_API_KEY)
         self.text_splitter = TextSplitterService()
         self.embedding_service = EmbeddingService()
+        self.file_processor = FileProcessorService()
 
     def create_index(self, config: IndexConfig):
         self.pc.create_index(
@@ -33,10 +35,28 @@ class PineconeDBProvider(VectorDBProvider):
     def upsert_data(self, index_name: str, upsert_request: UpsertRequest):
         index = self.pc.Index(index_name)
         
-        if len(upsert_request.records) > 100:
-            return self._upsert_data_batched(index, upsert_request)
+        all_records = []
         
-        return self._upsert_data_optimized(index, upsert_request)
+        for record in upsert_request.records:
+            all_records.append(record)
+            
+            if record.file_urls:
+                file_records = self.file_processor.process_file_urls_to_records(
+                    record.file_urls, 
+                    record.id, 
+                    record.metadata
+                )
+                all_records.extend(file_records)
+        
+        modified_request = UpsertRequest(
+            namespace=upsert_request.namespace,
+            records=all_records
+        )
+        
+        if len(all_records) > 100:
+            return self._upsert_data_batched(index, modified_request)
+        
+        return self._upsert_data_optimized(index, modified_request)
     
     def _upsert_data_optimized(self, index, upsert_request: UpsertRequest):
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -108,7 +128,10 @@ class PineconeDBProvider(VectorDBProvider):
             {
                 "id": chunk["id"],
                 "values": embedding,
-                "metadata": chunk["metadata"]
+                "metadata": {
+                    **chunk["metadata"],
+                    "text": chunk["text"]
+                }
             }
             for chunk, embedding in zip(chunks, embeddings)
         ]
@@ -121,7 +144,12 @@ class PineconeDBProvider(VectorDBProvider):
             
         try:
             index.delete(
-                filter={"original_id": {"$in": original_ids}},
+                filter={
+                    "$or": [
+                        {"original_id": {"$in": original_ids}},
+                        {"original_record_id": {"$in": original_ids}}
+                    ]
+                },
                 namespace=upsert_request.namespace
             )
         except Exception:
@@ -134,11 +162,15 @@ class PineconeDBProvider(VectorDBProvider):
         if query_request.ids:
             query_results = index.fetch(query_request.ids, query_request.namespace)
             for vector_id, vector_data in query_results['vectors'].items():
+                metadata = vector_data.get('metadata', {})
+                text_content = metadata.pop('text', '')
+                
                 results_to_return.append({
                     'id': vector_data['id'],
                     'score': None,
-                    'metadata': vector_data['metadata'],
-                    'vector': vector_data['values']
+                    'metadata': metadata,
+                    'vector': vector_data['values'],
+                    'text': text_content
                 })
         else:
             query_embedding = self.embedding_service.create_single_embedding(query_request.query)
@@ -153,11 +185,15 @@ class PineconeDBProvider(VectorDBProvider):
             )
 
             for match in query_results['matches']:
+                metadata = match.get('metadata', {})
+                text_content = metadata.pop('text', '')
+                
                 results_to_return.append({
                     'id': match['id'],
                     'score': match['score'],
-                    'metadata': match.get('metadata', {}),
-                    'vector': match['values']
+                    'metadata': metadata,
+                    'vector': match['values'],
+                    'text': text_content
                 })
 
         return results_to_return

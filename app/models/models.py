@@ -1,6 +1,5 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
-from typing import Optional
 
 
 class IndexConfig(BaseModel):
@@ -15,6 +14,7 @@ class DataItem(BaseModel):
     id: str
     data: dict
     metadata: dict = {}
+    file_urls: Optional[List[str]] = []
 
 
 class UpsertRequest(BaseModel):

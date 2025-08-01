@@ -38,4 +38,8 @@ class TextSplitterService:
         return results
     
     def combine_data_values(self, data: Dict[str, Any]) -> str:
-        return " ".join(str(value) for value in data.values()) 
+        
+        text_content = data.get("text", "")
+        other_values = [str(value) for key, value in data.items() if key != "text"]
+        
+        return " ".join([text_content] + other_values).strip()
