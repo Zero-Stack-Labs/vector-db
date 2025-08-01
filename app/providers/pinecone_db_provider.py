@@ -1,5 +1,6 @@
 import time
 import asyncio
+import inspect
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pinecone import Pinecone, ServerlessSpec
@@ -57,65 +58,160 @@ class PineconeDBProvider(VectorDBProvider):
             return self._upsert_data_batched(index, modified_request)
         
         return self._upsert_data_optimized(index, modified_request)
+
+    def _process_and_upsert_batch(self, index, records, namespace):
+        """Procesa un solo lote de registros y los carga a Pinecone."""
+        chunks = self._process_records_to_chunks(records)
+        if not chunks:
+            return
+
+        embeddings = self._create_embeddings_for_chunks(chunks)
+        vectors = self._build_vectors_from_chunks_and_embeddings(chunks, embeddings)
+        
+        # Hacemos el upsert en lotes paralelos para máxima velocidad
+        upsert_batch_size = 100
+        with ThreadPoolExecutor(max_workers=20) as upsert_executor:
+            futures = []
+            for i in range(0, len(vectors), upsert_batch_size):
+                batch_vectors = vectors[i:i + upsert_batch_size]
+                future = upsert_executor.submit(index.upsert, vectors=batch_vectors, namespace=namespace)
+                futures.append(future)
+            
+            # Esperar a que todos los lotes de upsert terminen
+            for future in as_completed(futures):
+                future.result()
     
     def _upsert_data_optimized(self, index, upsert_request: UpsertRequest):
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            delete_future = executor.submit(
-                self._delete_existing_document_chunks, index, upsert_request
-            )
-            
+        def _prepare_vectors():
             chunks = self._process_records_to_chunks(upsert_request.records)
+            if not chunks:
+                return None
             embeddings = self._create_embeddings_for_chunks(chunks)
+            return self._build_vectors_from_chunks_and_embeddings(chunks, embeddings)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            delete_future = executor.submit(self._delete_existing_document_chunks, index, upsert_request)
+            vectors_future = executor.submit(_prepare_vectors)
             
             delete_future.result()
+            vectors = vectors_future.result()
             
-            vectors = self._build_vectors_from_chunks_and_embeddings(chunks, embeddings)
-            index.upsert(vectors=vectors, namespace=upsert_request.namespace)
+            if vectors:
+                batch_size = 100
+                with ThreadPoolExecutor(max_workers=20) as upsert_executor:
+                    futures = []
+                    for i in range(0, len(vectors), batch_size):
+                        batch_vectors = vectors[i:i + batch_size]
+                        future = upsert_executor.submit(index.upsert, vectors=batch_vectors, namespace=upsert_request.namespace)
+                        futures.append(future)
+                    
+                    for future in as_completed(futures):
+                        future.result()
     
     def _upsert_data_batched(self, index, upsert_request: UpsertRequest):
-        batch_size = 50
-        records = upsert_request.records
-        total_records = len(records)
-        
         self._delete_existing_document_chunks(index, upsert_request)
+
+        batch_size = 50 
+        records = upsert_request.records
         
-        for i in range(0, total_records, batch_size):
-            batch_records = records[i:i + batch_size]
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = []
+            for i in range(0, len(records), batch_size):
+                batch_records = records[i:i + batch_size]
+                future = executor.submit(
+                    self._process_and_upsert_batch, 
+                    index, 
+                    batch_records, 
+                    upsert_request.namespace
+                )
+                futures.append(future)
             
-            chunks = self._process_records_to_chunks(batch_records)
-            embeddings = self._create_embeddings_for_chunks(chunks)
-            vectors = self._build_vectors_from_chunks_and_embeddings(chunks, embeddings)
-            
-            index.upsert(vectors=vectors, namespace=upsert_request.namespace)
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Error en un lote de upsert: {e}")
     
     def _process_records_to_chunks(self, records):
         all_chunks = []
         timestamp = int(time.time() * 1000)
         
         for record in records:
-            combined_text = self.text_splitter.combine_data_values(record.data)
-            
-            if len(combined_text) > CHUNK_THRESHOLD:
-                chunks = self.text_splitter.split_text_with_metadata(
-                    text=combined_text,
-                    original_id=record.id,
-                    metadata=record.metadata
-                )
-                all_chunks.extend(chunks)
-            else:
-                enhanced_metadata = {
-                    **record.metadata,
-                    "original_id": record.id,
-                    "chunk_index": 0,
-                    "total_chunks": 1,
-                    "chunk_size": len(combined_text),
-                    "created_at": timestamp
-                }
-                all_chunks.append({
-                    "id": record.id,
-                    "text": combined_text,
-                    "metadata": enhanced_metadata
-                })
+            # Verificar si record.data["text"] es una lista (para archivos grandes procesados en chunks)
+            text_content = record.data.get('text') if hasattr(record, 'data') and isinstance(record.data, dict) else None
+            is_chunked_list = isinstance(text_content, list)
+
+            if is_chunked_list: # Este es el caso para CSV
+                # `text_content` es ahora una lista de listas de diccionarios
+                for chunk_group in text_content:
+                    for item in chunk_group:
+                        # Cada 'item' tiene 'text' para embedding y 'metadata' completos
+                        chunk_id = f"{record.id}_csv_row_{len(all_chunks)}"
+                        all_chunks.append({
+                            "id": chunk_id,
+                            "text": item["text"],
+                            "metadata": {
+                                **record.metadata, # Metadatos base del record
+                                **item["metadata"]  # Metadatos completos de la fila
+                            }
+                        })
+            else: # Caso para TXT, MD, etc.
+                file_type = record.metadata.get('file_type', 'unknown')
+                
+                stream_chunk_index = 0
+                # ... (el resto de la lógica original para archivos no-CSV)
+                # Aquí asumimos que text_content es una lista de strings
+                if isinstance(text_content, list):
+                    for content_chunk in text_content:
+                        chunk_id = f"{record.id}_stream_{stream_chunk_index}"
+                        
+                        if len(content_chunk) > CHUNK_THRESHOLD:
+                            sub_chunks = self.text_splitter.split_text_with_metadata(
+                                text=content_chunk,
+                                original_id=chunk_id,
+                                metadata=record.metadata
+                            )
+                            all_chunks.extend(sub_chunks)
+                        else:
+                            enhanced_metadata = {
+                                **record.metadata,
+                                "original_id": record.id,
+                                "chunk_index": stream_chunk_index,
+                                "total_chunks": len(text_content),
+                                "chunk_size": len(content_chunk),
+                                "created_at": timestamp
+                            }
+                            all_chunks.append({
+                                "id": chunk_id,
+                                "text": content_chunk,
+                                "metadata": enhanced_metadata
+                            })
+                        stream_chunk_index += 1
+                else:
+                    # Procesamiento para datos que no son de archivo (texto plano, etc.)
+                    combined_text = self.text_splitter.combine_data_values(record.data)
+                    
+                    if len(combined_text) > CHUNK_THRESHOLD:
+                        chunks = self.text_splitter.split_text_with_metadata(
+                            text=combined_text,
+                            original_id=record.id,
+                            metadata=record.metadata
+                        )
+                        all_chunks.extend(chunks)
+                    else:
+                        enhanced_metadata = {
+                            **record.metadata,
+                            "original_id": record.id,
+                            "chunk_index": 0,
+                            "total_chunks": 1,
+                            "chunk_size": len(combined_text),
+                            "created_at": timestamp
+                        }
+                        all_chunks.append({
+                            "id": record.id,
+                            "text": combined_text,
+                            "metadata": enhanced_metadata
+                        })
         
         return all_chunks
     
@@ -150,8 +246,8 @@ class PineconeDBProvider(VectorDBProvider):
                         {"original_record_id": {"$in": original_ids}}
                     ]
                 },
-                namespace=upsert_request.namespace
-            )
+            namespace=upsert_request.namespace
+        )
         except Exception:
             pass
 
