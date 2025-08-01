@@ -125,15 +125,20 @@ class FileProcessorService:
             return self._read_text_in_chunks(file_path)
         
         elif file_extension == '.pdf':
-            # PyPDF2 maneja bien la memoria
             try:
                 import PyPDF2
                 with open(file_path, 'rb') as f:
                     reader = PyPDF2.PdfReader(f)
                     text = ""
-                    for page in reader.pages:
-                        text += page.extract_text() + "\n"
-                    return text
+                    page_texts = []
+                    
+                    for page_num, page in enumerate(reader.pages):
+                        page_text = page.extract_text()
+                        if page_text.strip():
+                            page_texts.append(f"[Página {page_num + 1}]\n{page_text}")
+                    
+                    text = "\n\n".join(page_texts)
+                    return self._post_process_pdf_text(text)
             except ImportError:
                 raise ImportError("PyPDF2 is required for PDF processing. Install with: pip install PyPDF2")
         
@@ -222,3 +227,29 @@ class FileProcessorService:
                 return converted_url
         
         return url
+    
+    def _post_process_pdf_text(self, text: str) -> str:
+        import re
+        
+        # Eliminar marcadores de página si están solos en una línea
+        text = re.sub(r'\n\[Página \d+\]\n\s*\n', '\n[Nueva Página]\n', text)
+        
+        # Unir palabras que se cortaron al final de línea con guión
+        text = re.sub(r'(\w+)-\n(\w+)', r'\1\2', text)
+        
+        # Unir líneas que claramente se cortaron en medio de una oración
+        text = re.sub(r'([a-z,])\n([a-z])', r'\1 \2', text)
+        
+        # Limpiar espacios múltiples
+        text = re.sub(r' {2,}', ' ', text)
+        
+        # Limpiar saltos de línea excesivos pero mantener estructura de párrafos
+        text = re.sub(r'\n{4,}', '\n\n\n', text)
+        
+        # Eliminar líneas que son solo números (posibles números de página sueltos)
+        text = re.sub(r'\n\s*\d{1,3}\s*\n', '\n', text)
+        
+        # Eliminar caracteres no imprimibles comunes en PDFs
+        text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', text)
+        
+        return text.strip()

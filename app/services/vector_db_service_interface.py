@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from app.models.models import IndexConfig, UpsertRequest, QueryRequest
+from typing import List, Dict, Any
 
 
 class VectorDBServiceInterface(ABC):
@@ -17,4 +18,12 @@ class VectorDBServiceInterface(ABC):
     
     @abstractmethod
     def ensure_namespace_exists(self, provider_name: str, index_name: str, namespace: str):
+        pass
+    
+    @abstractmethod
+    def get_chunk_with_context(self, provider_name: str, index_name: str, chunk_id: str, namespace: str) -> Dict[str, Any]:
+        pass
+    
+    @abstractmethod
+    def get_document_chunks(self, provider_name: str, index_name: str, original_id: str, namespace: str) -> List[Dict[str, Any]]:
         pass
